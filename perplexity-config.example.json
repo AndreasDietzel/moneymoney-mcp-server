@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "moneymoney": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/YOUR/moneymoney-mcp-server/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+.env
+.env.local
+.env.*
+!.env.example
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Sensitive transaction data
+data/transactions.plist
+data/transactions.csv
+data/accounts.json
+*.plist
+data/*.csv
+!data/transactions-example.csv
+
+# Personal account mappings (contains sensitive account UUIDs and IBANs)
+account-mappings.json
+
+# Personal configuration files
+perplexity-config.json
+*-config.json
+!*-config.example.json
+
+# Test scripts with potentially sensitive output
+test-*.js
+analyze-*.js
+diagnose-*.txt
+diagnose-*.scpt
+status-report.txt
+test-questions.txt
+
+# Personal Apple Scripts and plists
+*.plist
+!com.moneymoney.mcp-server.plist.example

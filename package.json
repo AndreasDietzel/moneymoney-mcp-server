@@ -1,0 +1,40 @@
+{
+  "name": "moneymoney-mcp-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndreasDietzel/moneymoney-mcp-server.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AndreasDietzel/moneymoney-mcp-server/issues"
+  },
+  "homepage": "https://github.com/AndreasDietzel/moneymoney-mcp-server#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@types/plist": "^3.0.5",
+    "axios": "^1.13.2",
+    "better-sqlite3": "^12.6.2",
+    "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.3",
+    "papaparse": "^5.5.3",
+    "plist": "^3.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/papaparse": "^5.5.2"
+  }
+}

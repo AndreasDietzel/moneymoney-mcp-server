@@ -1,0 +1,12 @@
+{
+  "accountMappings": {
+    "your-account-uuid-1": {
+      "name": "My Checking Account",
+      "type": "Checking"
+    },
+    "your-account-uuid-2": {
+      "name": "My Savings Account",
+      "type": "Savings"
+    }
+  }
+}
