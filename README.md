@@ -1,511 +1,437 @@
+```
+  ███╗   ███╗ ██████╗ ███╗   ██╗███████╗██╗   ██╗███╗   ███╗ ██████╗ ███╗   ██╗███████╗██╗   ██╗
+  ████╗ ████║██╔═══██╗████╗  ██║██╔════╝╚██╗ ██╔╝████╗ ████║██╔═══██╗████╗  ██║██╔════╝╚██╗ ██╔╝
+  ██╔████╔██║██║   ██║██╔██╗ ██║█████╗   ╚████╔╝ ██╔████╔██║██║   ██║██╔██╗ ██║█████╗   ╚████╔╝
+  ██║╚██╔╝██║██║   ██║██║╚██╗██║██╔══╝    ╚██╔╝  ██║╚██╔╝██║██║   ██║██║╚██╗██║██╔══╝    ╚██╔╝
+  ██║ ╚═╝ ██║╚██████╔╝██║ ╚████║███████╗   ██║   ██║ ╚═╝ ██║╚██████╔╝██║ ╚████║███████╗   ██║
+  ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝   ╚═╝
+                      MCP SERVER • YOUR AI-POWERED FINANCIAL COMPANION
+```
+
 # MoneyMoney MCP Server
 
-Ein Model Context Protocol (MCP) Server für die Integration von MoneyMoney mit AI-Clients wie Perplexity Pro und Claude Desktop.
+A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that connects [MoneyMoney](https://moneymoney-app.com/) — the popular macOS personal finance app — with AI assistants like **Perplexity Pro**, **Claude Desktop**, and any other MCP-compatible client.
+
+Ask your AI assistant questions about your finances in natural language and get real answers backed by your actual banking data.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org/)
+[![MCP](https://img.shields.io/badge/MCP-1.0-purple)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-## 🎯 Features
-
-- ✅ **Automatischer Datenzugriff**: Verwendet offizielle MoneyMoney AppleScript API
-- ✅ **Keine manuelle Arbeit**: Kein CSV-Export, keine UI-Automation - nur API-Calls
-- ✅ **Immer aktuell**: Daten werden automatisch aktualisiert (stündlich)
-- ✅ **Konten abrufen**: Alle MoneyMoney-Konten mit Kontoinformationen und Salden
-- ✅ **Transaktionsverlauf**: Detaillierte Transaktionshistorie mit Filtern
-- ✅ **Ausgabenanalyse**: Intelligente Analyse von Ausgabenmustern über verschiedene Zeiträume
-- ✅ **MCP-Kompatibel**: Funktioniert mit Perplexity, Claude Desktop und anderen MCP-Clients
-- ✅ **Intelligenter Fallback**: Verwendet Testdaten wenn MoneyMoney nicht läuft
 
 ---
 
-## 📋 Voraussetzungen
+## Features
 
-- **macOS** 10.14+ (MoneyMoney ist nur für macOS)
-- **Node.js** v18.0.0 oder höher
-- **npm** v9.0.0 oder höher
-- **Git** für Repository-Verwaltung
-- **MoneyMoney App** (optional - Server funktioniert auch mit Mock-Daten)
+- **Automatic Data Access** — Uses the official MoneyMoney AppleScript API to export data as XML Property List (plist)
+- **Zero Manual Work** — No CSV exports, no UI automation; the server auto-exports when data is stale (> 1 hour)
+- **5 MCP Tools** — Accounts, transactions, spending analysis, category breakdown, and server status
+- **Multi-Year Comparison** — Compare income, expenses, and savings rate across multiple years
+- **Hierarchical Categories** — Full category tree with spending totals (e.g. `Expenses > Consumables > Dining`)
+- **Account Mappings** — Map account UUIDs to friendly names via a local config file
+- **Smart Fallback** — Uses realistic mock data in development mode if MoneyMoney isn't running
+- **Production Mode** — Strict mode that requires real data (no mock fallback)
+- **Autostart** — Includes a macOS LaunchAgent for automatic startup on reboot
 
-### Versionen überprüfen
+---
+
+## Prerequisites
+
+- **macOS** 10.14 or later (MoneyMoney is macOS-only)
+- **Node.js** v18.0.0+ and **npm** v9.0.0+
+- **MoneyMoney** app (optional — server works with mock data in dev mode)
 
 ```bash
-node --version    # sollte v18+ sein
-npm --version     # sollte v9+ sein
-git --version     # beliebige Version
+node --version    # v18+
+npm --version     # v9+
 ```
 
 ---
 
-## 🚀 Installation
-
-### Schnellstart
+## Quick Start
 
 ```bash
-# Repository klonen
+# Clone and install
 git clone https://github.com/AndreasDietzel/moneymoney-mcp-server.git
 cd moneymoney-mcp-server
-
-# Dependencies installieren
 npm install
 
-# TypeScript kompilieren
+# Build and run
 npm run build
-
-# (Optional) MoneyMoney Daten exportieren
-# In MoneyMoney: Ablage → Exportieren → CSV-Export...
-# Speichern als: ~/Projects/moneymoney-mcp-server/data/transactions.csv
-
-# Server starten
 npm run start
 ```
 
-### Erwartete Ausgabe
+Expected output:
 
 ```
 Starting MoneyMoney MCP Server
 Version: 1.0.0
-MoneyMoney installed: true
 Connecting via stdio...
 MoneyMoney MCP Server ready for connections
 ```
 
 ---
 
-## 📊 MoneyMoney Datenanbindung
+## How It Works
 
-### 🤖 Automatischer Datenzugriff (Keine manuelle Arbeit!)
+```
+┌──────────────┐     MCP (stdio)     ┌───────────────────┐     AppleScript     ┌──────────────┐
+│  AI Client   │ ◄──────────────────► │  MCP Server       │ ◄────────────────►  │  MoneyMoney  │
+│  (Perplexity │     JSON-RPC         │  (Node.js)        │     plist export    │  (macOS App) │
+│   / Claude)  │                      │                   │                     │              │
+└──────────────┘                      └───────────────────┘                     └──────────────┘
+```
 
-Der MCP Server holt sich **automatisch** deine aktuellen MoneyMoney-Daten:
+1. You ask your AI assistant a question about your finances
+2. The AI client calls one of the 5 MCP tools
+3. The server checks if exported data is fresh (< 1 hour old)
+4. If stale, it triggers MoneyMoney's AppleScript API to re-export as plist
+5. Data is parsed, formatted, and returned to the AI client
+6. You see your real, up-to-date financial data
 
-**Wie es funktioniert:**
-1. **Du fragst** in Perplexity nach deinen Transaktionen
-2. **Server prüft**: Sind die Daten aktuell? (< 1 Stunde alt)
-3. **Automatischer Export**: Falls nötig, triggert der Server MoneyMoney per AppleScript
-4. **Sofortiges Laden**: Daten werden gelesen und an Perplexity gesendet
-5. **Du siehst**: Deine echten, aktuellen Finanzdaten!
+**No manual exports needed.** MoneyMoney just needs to be running in the background.
 
-**Du musst NICHTS manuell machen!** ✨
+---
 
-### ⚙️ Einmalige Einrichtung
+## One-Time Setup
 
-Damit der automatische Export funktioniert:
+For automatic AppleScript exports to work:
 
-1. **UI-Automation erlauben**:
-   - Systemeinstellungen → Datenschutz & Sicherheit → Automation
-   - Erlauben für Terminal/Node: MoneyMoney steuern
-   
-2. **MoneyMoney im Hintergrund laufen lassen**:
+1. **Grant Automation Permission**:
+   - System Settings → Privacy & Security → Automation
+   - Allow Terminal / Node.js to control MoneyMoney
+
+2. **Keep MoneyMoney running**:
    ```bash
    open -a MoneyMoney
    ```
 
-Das war's! Ab jetzt arbeitet alles automatisch. 🎉
+3. **(Optional) Set up Account Mappings** — see [Account Mappings](#account-mappings)
 
 ---
 
-## ⚙️ Konfiguration
+## AI Client Integration
 
-### Umgebungsvariablen (Optional)
+### Perplexity Desktop
 
-Erstelle eine `.env` Datei im Projektverzeichnis:
+```bash
+mkdir -p ~/.config/perplexity
+nano ~/.config/perplexity/mcp.json
+```
+
+```json
+{
+  "mcpServers": {
+    "moneymoney": {
+      "type": "stdio",
+      "command": "/usr/local/bin/node",
+      "args": ["/ABSOLUTE/PATH/TO/moneymoney-mcp-server/dist/index.js"]
+    }
+  }
+}
+```
+
+Restart Perplexity after saving. Use `which node` to find your absolute Node.js path.
+
+### Claude Desktop
+
+```bash
+nano ~/Library/Application\ Support/Claude/claude_desktop_config.json
+```
+
+```json
+{
+  "mcpServers": {
+    "moneymoney": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/moneymoney-mcp-server/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving.
+
+### Other MCP Clients
+
+The server uses the standard MCP stdio transport and works with any MCP-compatible client.
+
+---
+
+## Available Tools
+
+The server exposes **5 tools** via the Model Context Protocol:
+
+### 1. `get_status`
+
+Returns server status, data loading state, and data freshness.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| *(none)* | — | No parameters required |
+
+**Example prompt**: `What's the status of my MoneyMoney connection?`
+
+**Response**:
+```json
+{
+  "status": "✅ Data loaded and available",
+  "isLoading": false,
+  "hasData": true,
+  "dataAge": 1800000,
+  "ageMessage": "Last updated 30 minutes ago",
+  "mode": "production"
+}
+```
+
+---
+
+### 2. `get_accounts`
+
+Fetches all MoneyMoney accounts with names, types, and balances.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| *(none)* | — | No parameters required |
+
+**Example prompt**: `Show me all my accounts and their balances`
+
+**Response**:
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "2677e957-...",
+      "name": "Checking Account",
+      "type": "Checking",
+      "balance": 5234.50,
+      "currency": "EUR"
+    }
+  ],
+  "count": 3
+}
+```
+
+---
+
+### 3. `get_transactions`
+
+Fetches transactions, optionally filtered by account and/or year.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `account_id` | string | *(optional)* Filter by account UUID |
+| `limit` | number | *(optional)* Max transactions to return (default: all) |
+| `year` | number | *(optional)* Filter by year, e.g. `2025` |
+
+**Example prompt**: `Show me all transactions from 2025`
+
+**Response**:
+```json
+{
+  "status": "success",
+  "accountId": "all",
+  "year": 2025,
+  "filteredCount": 842,
+  "returnedCount": 842,
+  "data": [
+    {
+      "id": "tx-12345",
+      "accountId": "2677e957-...",
+      "date": "2025-06-15",
+      "description": "REWE Supermarket",
+      "amount": -45.99,
+      "currency": "EUR",
+      "category": "Groceries",
+      "categoryPath": ["Expenses", "Consumables", "Groceries"],
+      "payee": "REWE",
+      "booked": true
+    }
+  ]
+}
+```
+
+---
+
+### 4. `analyze_spending`
+
+Analyzes spending patterns. Supports two modes:
+
+**Mode A — Period-based analysis** (requires `account_id` + `period`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `account_id` | string | Account UUID to analyze |
+| `period` | string | `week`, `month`, `quarter`, or `year` |
+
+**Example prompt**: `Analyze my spending from the checking account for the last month`
+
+**Mode B — Multi-year comparison** (requires `start_year` and/or `end_year`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `start_year` | number | Start year (e.g. `2020`) |
+| `end_year` | number | End year (e.g. `2025`) |
+
+**Example prompt**: `Compare my income and expenses from 2022 to 2025`
+
+**Response** (multi-year):
+```json
+{
+  "status": "success",
+  "mode": "year-comparison",
+  "data": {
+    "2024": {
+      "income": { "Salary": 42000 },
+      "expenses": { "Rent": 12000, "Groceries": 4800 },
+      "totalIncome": 42000,
+      "totalExpenses": 16800,
+      "netSavings": 25200,
+      "savingsRate": 60.0
+    }
+  }
+}
+```
+
+---
+
+### 5. `get_categories`
+
+Returns the hierarchical category tree with spending totals.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `account_id` | string | *(optional)* Filter by account UUID |
+| `include_income` | boolean | *(optional)* Include income categories (default: `false`) |
+
+**Example prompt**: `Show me my expense categories with totals`
+
+**Response**:
+```json
+{
+  "status": "success",
+  "categories": [
+    {
+      "name": "Expenses",
+      "path": "Expenses",
+      "total": 18500.00,
+      "count": 620,
+      "children": [
+        {
+          "name": "Consumables",
+          "path": "Expenses > Consumables",
+          "total": 6200.00,
+          "count": 310,
+          "children": [
+            { "name": "Groceries", "path": "Expenses > Consumables > Groceries", "total": 4800.00, "count": 240 },
+            { "name": "Dining", "path": "Expenses > Consumables > Dining", "total": 1400.00, "count": 70 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Account Mappings
+
+By default, accounts are identified by their UUID. To assign friendly names:
+
+1. Copy the example config:
+   ```bash
+   cp account-mappings.example.json account-mappings.json
+   ```
+
+2. Add your account UUIDs and names:
+   ```json
+   {
+     "accountMappings": {
+       "2677e957-abcd-...": { "name": "Checking Account", "type": "Checking" },
+       "8fa2c1b3-efgh-...": { "name": "Savings Account", "type": "Savings" }
+     }
+   }
+   ```
+
+Supported types: `Checking`, `Savings`, `CreditCard`, `Investment`, `Loan`
+
+> **Privacy**: `account-mappings.json` is in `.gitignore` and never committed to Git.
+
+See [ACCOUNT_MAPPINGS.md](ACCOUNT_MAPPINGS.md) for details.
+
+---
+
+## Configuration
+
+### Environment Variables (Optional)
+
+Create a `.env` file in the project root:
 
 ```env
-# MoneyMoney API Konfiguration (aktuell nicht verwendet - für zukünftige Erweiterungen)
-MONEYMONEY_API_URL=http://localhost:4444
-MONEYMONEY_API_KEY=your_api_key_here
-
-# Server Konfiguration
-MCP_TRANSPORT=stdio
+# Set to "production" to disable mock data fallback
 NODE_ENV=production
 ```
 
-**Hinweis**: Diese Variablen sind optional. Der Server funktioniert auch ohne `.env` Datei.
+The server works without any `.env` file. In production mode, it will throw errors instead of falling back to mock data when MoneyMoney is unavailable.
 
 ---
 
-## 🔧 Verwendung
+## Running the Server
 
-### Entwicklungsmodus
+### Development Mode
 
 ```bash
-# Server mit automatischem Reload starten
-npm run dev
+npm run dev       # Starts with ts-node (auto-compiles TypeScript)
 ```
 
-### Produktionsmodus
+### Production Mode
 
 ```bash
-# 1. TypeScript zu JavaScript kompilieren
-npm run build
-
-# 2. Kompilierten Server starten
-npm run start
+npm run build     # Compile TypeScript to JavaScript
+npm run start     # Run compiled server
 ```
 
-### Server im Hintergrund laufen lassen
+### Background / Daemon
 
 ```bash
-# Mit npm
+# Simple background process
 npm run start &
 
-# Oder mit pm2 (empfohlen für Production)
+# Or with pm2 (recommended)
 npm install -g pm2
 pm2 start dist/index.js --name moneymoney-mcp
 pm2 save
 pm2 startup
 ```
 
-### 🔄 Autostart nach Neustart (macOS)
-
-Der Server wird automatisch bei jedem Neustart gestartet:
+### Autostart on Reboot (macOS LaunchAgent)
 
 ```bash
-# 1. Launch Agent installieren
-cp ~/Projects/moneymoney-mcp-server/com.moneymoney.mcp-server.plist ~/Library/LaunchAgents/
-
-# 2. Launch Agent laden und starten
+# Install
+cp com.moneymoney.mcp-server.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.moneymoney.mcp-server.plist
-launchctl start com.moneymoney.mcp-server
 
-# 3. Status prüfen
+# Check status
 launchctl list | grep moneymoney
 
-# 4. Logs anzeigen
-tail -f ~/Projects/moneymoney-mcp-server/logs/stderr.log
-```
+# View logs
+tail -f logs/stderr.log
 
-**Deaktivieren des Autostarts:**
-```bash
+# Uninstall
 launchctl unload ~/Library/LaunchAgents/com.moneymoney.mcp-server.plist
 rm ~/Library/LaunchAgents/com.moneymoney.mcp-server.plist
 ```
 
 ---
 
-## 🔗 Integration mit AI-Clients
+## MoneyMoney AppleScript API
 
-### Perplexity Desktop
-
-1. **Erstelle die Konfigurationsdatei**:
-   ```bash
-   mkdir -p ~/.config/perplexity
-   nano ~/.config/perplexity/mcp.json
-   ```
-
-2. **Füge diese Konfiguration ein**:
-   ```json
-   {
-     "mcpServers": {
-       "moneymoney": {
-         "type": "stdio",
-         "command": "/usr/local/bin/node",
-         "args": ["/ABSOLUTE/PATH/TO/YOUR/moneymoney-mcp-server/dist/index.js"]
-       }
-     }
-   }
-   ```
-   
-   **✅ Konfiguration getestet und funktionsfähig!**
-       }
-     }
-   }
-   ```
-   
-   **✅ Konfiguration getestet und funktionsfähig!**
-
-3. **Perplexity neu starten**
-
-4. **Testen**: 
-   ```
-   Zeige mir alle meine MoneyMoney Konten
-   ```
-
-### Claude Desktop
-
-1. **Öffne die Claude-Konfiguration**:
-   ```bash
-   nano ~/.config/Claude/claude_desktop_config.json
-   ```
-
-2. **Füge die MCP-Server-Konfiguration hinzu**:
-   ```json
-   {
-     "mcpServers": {
-       "moneymoney": {
-         "command": "node",
-         "args": ["/Users/DEIN_USERNAME/Projects/moneymoney-mcp-server/dist/index.js"],
-         "env": {
-           "NODE_ENV": "production"
-         }
-       }
-     }
-   }
-   ```
-
-3. **Claude Desktop neu starten**
-
-### Andere MCP-Clients
-
-Der Server implementiert die Standard-MCP-Spezifikation und sollte mit jedem MCP-kompatiblen Client funktionieren. Verwende die stdio-Transport-Konfiguration wie oben gezeigt.
-
----
-
-## 📊 Verfügbare Tools
-
-Der MCP Server stellt drei Tools zur Verfügung:
-
-### 1. `get_accounts` - Konten abrufen
-
-Ruft alle MoneyMoney-Konten mit Details ab.
-
-**Input Schema**:
-```json
-{
-  "type": "object",
-  "properties": {}
-}
-```
-
-**Beispiel-Prompt**:
-```
-Zeige mir alle meine Konten mit ihren Salden
-```
-
-**Rückgabe**:
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "name": "Girokonto",
-      "owner": "Max Mustermann",
-      "accountNumber": "123456789",
-      "bankCode": "12345678",
-      "currency": "EUR",
-      "type": "Giro",
-      "balance": 5000.50,
-      "iban": "DE89370400440532013000",
-      "bic": "COBADEFFXXX"
-    }
-  ],
-  "count": 2
-}
-```
-
-### 2. `get_transactions` - Transaktionen abrufen
-
-Holt Transaktionen für ein bestimmtes Konto.
-
-**Input Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Die Kontonummer oder Konto-ID"
-    },
-    "limit": {
-      "type": "number",
-      "description": "Maximale Anzahl von Transaktionen (Standard: 50)"
-    }
-  },
-  "required": ["account_id"]
-}
-```
-
-**Beispiel-Prompt**:
-```
-Gib mir die letzten 20 Transaktionen von Konto 123456789
-```
-
-**Rückgabe**:
-```json
-{
-  "status": "success",
-  "accountId": "123456789",
-  "data": [
-    {
-      "name": "Amazon EU S.à.r.L.",
-      "accountNumber": "123456789",
-      "bankCode": "12345678",
-      "amount": -49.99,
-      "currency": "EUR",
-      "bookingDate": 1705427200,
-      "purpose": "Online purchase - Order #123456",
-      "booked": true
-    }
-  ],
-  "count": 20
-}
-```
-
-### 3. `analyze_spending` - Ausgaben analysieren
-
-Analysiert Ausgabenmuster über einen definierten Zeitraum.
-
-**Input Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Die Kontonummer"
-    },
-    "period": {
-      "type": "string",
-      "enum": ["week", "month", "quarter", "year"],
-      "description": "Analysezeitraum"
-    }
-  },
-  "required": ["account_id", "period"]
-}
-```
-
-**Beispiel-Prompt**:
-```
-Analysiere meine Ausgaben des letzten Monats für Konto 123456789
-```
-
-**Rückgabe**:
-```json
-{
-  "status": "success",
-  "accountId": "123456789",
-  "period": "month",
-  "data": {
-    "period": "month",
-    "transactionCount": 45,
-    "totalSpending": "1234.56",
-    "averageTransaction": "27.43",
-    "currency": "EUR"
-  }
-}
-```
-
----
-
-## 🐛 Fehlerbehebung
-
-### Problem: Server startet nicht
-
-**Symptome**: `npm run start` schlägt fehl
-
-**Lösung**:
-```bash
-# 1. Dependencies neu installieren
-rm -rf node_modules package-lock.json
-npm install
-
-# 2. TypeScript neu kompilieren
-npm run build
-
-# 3. Node-Version prüfen
-node --version  # muss v18+ sein
-
-# 4. Manuell starten und Fehler anzeigen
-node dist/index.js
-```
-
-### Problem: "MoneyMoney is not installed"
-
-**Ursache**: MoneyMoney App ist nicht im erwarteten Verzeichnis
-
-**Lösung**:
-```bash
-# Prüfe ob MoneyMoney installiert ist
-ls -la ~/Library/Containers/com.moneymoney-app.retail/
-
-# Falls nicht vorhanden: Der Server funktioniert trotzdem mit Mock-Daten
-# Oder installiere MoneyMoney von https://moneymoney-app.com
-```
-
-### Problem: Perplexity erkennt MCP Server nicht
-
-**Checkliste**:
-- [ ] Ist der Server gebaut? (`npm run build`)
-- [ ] Ist der Pfad in der Config korrekt? (absoluter Pfad!)
-- [ ] Wurde Perplexity nach Config-Änderung neu gestartet?
-- [ ] Läuft der Server? (teste mit `node dist/index.js`)
-- [ ] Ist der Node-Pfad korrekt? (`which node`)
-
-**Config testen**:
-```bash
-# 1. Server manuell starten
-cd ~/Projects/moneymoney-mcp-server
-npm run start
-
-# 2. In anderem Terminal Perplexity starten
-open /Applications/Perplexity.app
-
-# 3. In Perplexity testen
-# "Zeige mir meine MoneyMoney Konten"
-```
-
-### Problem: JSONRPC.ProtocolTransportError (Fehler 3)
-
-**Ursache**: MCP-Transport konnte nicht initialisiert werden
-
-**Lösung**:
-```bash
-# 1. Absoluten Node-Pfad verwenden
-which node  # z.B. /usr/local/bin/node
-
-# 2. Config mit absolutem Pfad:
-{
-  "mcpServers": {
-    "moneymoney": {
-      "type": "stdio",
-      "command": "/usr/local/bin/node",  # <-- Absoluter Pfad!
-      "args": ["/Users/DEIN_USERNAME/Projects/moneymoney-mcp-server/dist/index.js"]
-    }
-  }
-}
-
-# 3. Server-Prozesse killen
-pkill -f "node dist/index.js"
-
-# 4. Perplexity komplett neu starten
-```
-
----
-
-## 📁 Projektstruktur
-
-```
-moneymoney-mcp-server/
-├── src/
-│   ├── index.ts              # 🚀 MCP Server Entry Point (Hauptdatei)
-│   ├── moneymoney.ts         # 💰 MoneyMoney Integration & Business Logic
-│   └── server.ts             # 🔄 Alternative Server Implementation
-├── dist/                     # 📦 Kompilierte JavaScript-Dateien
-│   ├── index.js              # ✅ Von Perplexity/Claude verwendet
-│   ├── moneymoney.js
-│   └── server.js
-├── logs/                     # 📝 Server Logs (stdout.log, stderr.log)
-├── node_modules/             # 📚 Dependencies
-├── package.json              # 📋 Projekt-Metadaten & Scripts
-├── tsconfig.json             # ⚙️ TypeScript Konfiguration
-├── com.moneymoney.mcp-server.plist  # 🔄 macOS LaunchAgent (Autostart)
-├── .env.example              # 🔐 Beispiel-Umgebungsvariablen
-├── .gitignore                # 🚫 Git Ignore Rules
-├── README.md                 # 📖 Diese Datei
-├── PERPLEXITY_SETUP.md       # 🔧 Detaillierte Perplexity-Anleitung
-├── QUICKSTART.md             # ⚡ 5-Minuten Schnellstart
-└── LICENSE                   # ⚖️ MIT Lizenz
-
-dist/index.js ist die Datei, die von MCP-Clients verwendet wird!
-```
-
----
-
-## � MoneyMoney Integration
-
-### Offizielle AppleScript API
-
-Der Server verwendet die **offizielle MoneyMoney AppleScript API** für den Datenzugriff:
+The server uses the **official MoneyMoney AppleScript API** to export transaction data:
 
 ```applescript
 tell application "MoneyMoney"
@@ -513,188 +439,181 @@ tell application "MoneyMoney"
 end tell
 ```
 
-**Vorteile gegenüber CSV-Export oder UI-Automation:**
-- ✅ **Zuverlässig**: Offizielle, stabile API von MoneyMoney
-- ✅ **Schnell**: Direkter API-Zugriff ohne UI-Automation
-- ✅ **Strukturiert**: XML Property List Format (plist)
-- ✅ **Keine Berechtigungen**: Keine UI-Automation Permissions nötig
-- ✅ **Detailliert**: Umfassende Transaktionsinformationen inkl. IDs, UUIDs, Kategorien
+**Advantages over CSV export or UI automation:**
 
-### Automatischer Export
+| | AppleScript API | CSV Export | UI Automation |
+|---|---|---|---|
+| Reliability | Official, stable API | Format may change | Fragile |
+| Speed | Direct API call | Manual step | Slow |
+| Data format | Structured plist/XML | Flat CSV | None |
+| Permissions | Automation only | None | Accessibility |
+| Detail level | IDs, UUIDs, categories | Limited | Limited |
 
-Der Server prüft automatisch alle 5 Minuten ob Daten vorhanden sind und führt bei Bedarf einen Export durch:
+### Data Fields
 
-1. **Datenfrische prüfen**: Sind die Daten älter als 1 Stunde?
-2. **Automatischer Export**: Falls ja, wird automatisch ein Export ausgelöst
-3. **Parsing**: XML plist wird in JavaScript-Objekte konvertiert
-4. **Caching**: Daten werden für 5 Minuten gecached
+Each transaction includes:
 
-**MoneyMoney muss laufen** für API-Zugriff. Falls nicht verfügbar, nutzt der Server Mock-Daten.
+| Field | Description |
+|-------|-------------|
+| `id` | Unique transaction ID |
+| `accountUuid` | Account UUID |
+| `amount` | Amount (negative = expense) |
+| `currency` | Currency code (EUR, USD, ...) |
+| `bookingDate` | Booking date |
+| `valueDate` | Value date |
+| `name` | Payee / payer |
+| `purpose` | Payment reference |
+| `category` | Category (leaf level) |
+| `categoryPath` | Full hierarchy, e.g. `["Expenses", "Groceries"]` |
+| `categoryUuid` | Category UUID |
+| `booked` | Whether the transaction is posted |
 
-### Datenformat
-
-Die API liefert umfassende Transaktionsdaten:
-- `id`: Eindeutige Transaktions-ID
-- `accountUuid`: Konto-UUID
-- `amount`: Betrag (negative für Ausgaben)
-- `currency`: Währung (EUR, USD, etc.)
-- `bookingDate`: Buchungsdatum
-- `valueDate`: Valutadatum
-- `name`: Zahlungsempfänger/Absender
-- `purpose`: Verwendungszweck
-- `category`: Kategorie mit Pfad
-- `categoryUuid`: Kategorie-UUID
-- `booked`: Status (gebucht oder vorgemerkt)
-- `checkmark`: Erledigt-Status
-
-Siehe auch: [MoneyMoney AppleScript Dokumentation](https://moneymoney.app/applescript/)
+See also: [MoneyMoney AppleScript Documentation](https://moneymoney-app.com/applescript/)
 
 ---
 
-## �🔐 Sicherheit
+## Project Structure
 
-### Best Practices
-
-1. **Umgebungsvariablen schützen**:
-   - Nie API-Keys oder Passwörter im Code speichern
-   - `.env` Dateien nicht in Git committen (ist bereits in `.gitignore`)
-   - Verwende `.env.example` als Vorlage
-
-2. **GitHub Token Sicherheit**:
-   ```bash
-   # Token sicher in macOS Keychain speichern
-   security add-generic-password -a "github-token" \
-     -s "github.com" \
-     -w "YOUR_TOKEN_HERE"
-   
-   # Token abrufen
-   security find-generic-password -a "github-token" \
-     -s "github.com" -w
-   ```
-
-3. **Regelmäßige Updates**:
-   ```bash
-   # Sicherheits-Audits
-   npm audit
-   
-   # Automatische Fixes
-   npm audit fix
-   
-   # Dependencies aktualisieren
-   npm update
-   ```
+```
+moneymoney-mcp-server/
+├── src/
+│   ├── index.ts                 # MCP server entry point & tool definitions
+│   ├── moneymoney.ts            # MoneyMoney service (API, parsing, analysis)
+│   └── moneymoney-old.ts        # Legacy implementation (reference only)
+├── dist/                        # Compiled JavaScript (used by MCP clients)
+├── scripts/
+│   ├── auto-export.scpt         # AppleScript for automatic data export
+│   ├── get-accounts.scpt        # AppleScript to fetch account list
+│   ├── diagnose-accounts.scpt   # Account diagnostics
+│   └── diagnose.applescript     # General diagnostics
+├── data/
+│   ├── transactions.plist       # Exported transaction data (auto-generated)
+│   ├── accounts.json            # Account balances cache
+│   ├── transactions.csv         # Legacy CSV data (optional)
+│   └── transactions-example.csv # Example data for reference
+├── logs/                        # Server logs (stdout.log, stderr.log)
+├── account-mappings.json        # Your account name mappings (gitignored)
+├── account-mappings.example.json# Template for account mappings
+├── com.moneymoney.mcp-server.plist  # macOS LaunchAgent for autostart
+├── moneymoney-export.lua        # MoneyMoney Lua export extension
+├── package.json                 # Project metadata & scripts
+├── tsconfig.json                # TypeScript configuration
+├── QUICKSTART.md                # 5-minute quick start guide
+├── PERPLEXITY_SETUP.md          # Detailed Perplexity integration guide
+├── ACCOUNT_MAPPINGS.md          # Account mapping documentation
+├── MONEYMONEY_EXPORT.md         # Export documentation
+├── SECURITY.md                  # Security & privacy guidelines
+└── LICENSE                      # MIT License
+```
 
 ---
 
-## 🛠️ Entwicklung
+## Troubleshooting
 
-### Development Workflow
+### Server won't start
 
 ```bash
-# 1. Repository forken und klonen
-git clone https://github.com/DEIN_USERNAME/moneymoney-mcp-server.git
-cd moneymoney-mcp-server
-
-# 2. Feature Branch erstellen
-git checkout -b feature/meine-neue-feature
-
-# 3. Entwickeln und testen
-npm run dev
-
-# 4. Code formatieren und linten
-npm run lint  # (falls konfiguriert)
-
-# 5. Änderungen committen
-git add .
-git commit -m "feat: beschreibung der änderung"
-
-# 6. Branch pushen
-git push origin feature/meine-neue-feature
-
-# 7. Pull Request erstellen auf GitHub
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+node dist/index.js    # Run directly to see errors
 ```
+
+### Perplexity doesn't recognize the MCP server
+
+1. Verify the server is built: `ls dist/index.js`
+2. Use an **absolute path** in the config (run `which node` to find yours)
+3. Restart Perplexity **completely** after changing the config
+4. Test the server manually: `node dist/index.js`
+
+### JSONRPC.ProtocolTransportError (Error 3)
+
+Use the absolute Node.js path in your MCP config:
+
+```bash
+which node    # e.g. /usr/local/bin/node or /opt/homebrew/bin/node
+```
+
+### MoneyMoney data not loading
+
+- Ensure MoneyMoney is running: `open -a MoneyMoney`
+- Check automation permissions in System Settings
+- View server logs: `tail -f logs/stderr.log`
+- The server retries every 30 seconds and re-exports data older than 1 hour
+
+---
+
+## Security & Privacy
+
+- **Financial data stays local** — All data remains on your machine. The MCP server only communicates via stdio with the local AI client.
+- **Sensitive files are gitignored** — `account-mappings.json`, `data/*.csv`, `data/*.plist`, `data/accounts.json`, `.env`, and config files are excluded from Git.
+- **Example files provided** — Use `account-mappings.example.json` and `perplexity-config.example.json` as templates.
+- **No network requests** — The server makes no outbound HTTP calls. All data access is via local AppleScript.
+
+See [SECURITY.md](SECURITY.md) for the full security policy.
+
+---
+
+## Development
 
 ### Scripts
 
-| Command | Beschreibung |
+| Command | Description |
 |---------|-------------|
-| `npm run dev` | Startet Server im Entwicklungsmodus mit ts-node |
-| `npm run build` | Kompiliert TypeScript zu JavaScript |
-| `npm run start` | Startet kompilierten Server |
-| `npm test` | Führt Tests aus (aktuell nicht implementiert) |
+| `npm run dev` | Start server in development mode (ts-node) |
+| `npm run build` | Compile TypeScript to JavaScript |
+| `npm run start` | Start compiled production server |
 
-### Code Style
+### Contributing
 
-- **TypeScript**: Strict Mode aktiviert
-- **ES Modules**: CommonJS (Node.js Kompatibilität)
-- **Formatting**: Prettier (empfohlen)
-- **Linting**: ESLint (empfohlen)
-
----
-
-## 📚 Zusätzliche Dokumentation
-
-- **[PERPLEXITY_SETUP.md](PERPLEXITY_SETUP.md)** - Ausführliche Perplexity-Integration mit Troubleshooting
-- **[QUICKSTART.md](QUICKSTART.md)** - 5-Minuten Schnellstart-Anleitung
-- **[Model Context Protocol](https://modelcontextprotocol.io/)** - Offizielle MCP-Dokumentation
-- **[MoneyMoney API](https://moneymoney-app.com/api/)** - MoneyMoney Lua Extension API
-
----
-
-## 🤝 Beiträge
-
-Beiträge sind willkommen! Bitte beachte:
-
-1. **Issues erstellen** für Bugs oder Feature-Requests
-2. **Pull Requests** mit klarer Beschreibung
-3. **Code-Qualität** beibehalten (TypeScript Strict Mode)
-4. **Tests** hinzufügen für neue Features
-5. **Dokumentation** aktualisieren
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Develop and test: `npm run dev`
+4. Commit changes: `git commit -m "feat: description"`
+5. Push and create a Pull Request
 
 ### Roadmap
 
-- [ ] Echte MoneyMoney-Datenbankintegration (SQLite)
-- [ ] AppleScript-Bridge für direkte MoneyMoney-Kommunikation
-- [ ] Erweiterte Analysetools (Kategorien, Trends, Budgets)
-- [ ] Mehr Filter- und Sortieroptionen für Transaktionen
-- [ ] Unterstützung für mehrere Währungen
-- [ ] Export-Funktionen (CSV, JSON, Excel)
-- [ ] Grafische Visualisierungen
-- [ ] Unit und Integration Tests
-- [ ] Docker Container Support
-- [ ] CI/CD Pipeline (GitHub Actions)
+- [x] ~~AppleScript bridge for direct MoneyMoney communication~~
+- [x] ~~Hierarchical category analysis~~
+- [x] ~~Multi-year spending comparison~~
+- [x] ~~Year-based transaction filtering~~
+- [x] ~~Account mapping configuration~~
+- [ ] Budget tracking and alerts
+- [ ] Trend analysis and forecasting
+- [ ] Multi-currency support
+- [ ] Unit and integration tests
+- [ ] CI/CD pipeline (GitHub Actions)
 
 ---
 
-## 📄 Lizenz
+## Additional Documentation
 
-MIT License - siehe [LICENSE](LICENSE) Datei für Details.
-
-Copyright (c) 2026 MoneyMoney MCP Server Contributors
-
----
-
-## 🙏 Danksagungen
-
-- **[Model Context Protocol](https://modelcontextprotocol.io/)** für das offene MCP-Standard
-- **[MoneyMoney](https://moneymoney-app.com/)** für die großartige macOS Finanz-App
-- **[Perplexity AI](https://www.perplexity.ai/)** für MCP-Client-Support
-- **[Anthropic](https://www.anthropic.com/)** für Claude und MCP-Entwicklung
+- [QUICKSTART.md](QUICKSTART.md) — 5-minute quick start guide
+- [PERPLEXITY_SETUP.md](PERPLEXITY_SETUP.md) — Detailed Perplexity integration guide
+- [ACCOUNT_MAPPINGS.md](ACCOUNT_MAPPINGS.md) — Account mapping configuration
+- [SECURITY.md](SECURITY.md) — Security & privacy guidelines
+- [Model Context Protocol](https://modelcontextprotocol.io/) — Official MCP specification
+- [MoneyMoney](https://moneymoney-app.com/) — MoneyMoney app & documentation
 
 ---
 
-## 📞 Support
+## License
 
-- **GitHub Issues**: [Issues erstellen](https://github.com/YOUR_USERNAME/moneymoney-mcp-server/issues)
-- **Diskussionen**: [GitHub Discussions](https://github.com/YOUR_USERNAME/moneymoney-mcp-server/discussions)
-- **Email**: Siehe GitHub Profil
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-**Version**: 1.0.0  
-**Letzte Aktualisierung**: 17. Januar 2026  
-**Status**: ✅ Production Ready (mit Mock-Daten & Autostart)  
-**Status**: ✅ Production Ready (mit Mock-Daten & Autostart)
+## Acknowledgements
+
+- [Model Context Protocol](https://modelcontextprotocol.io/) — The open MCP standard by Anthropic
+- [MoneyMoney](https://moneymoney-app.com/) — Excellent macOS personal finance app
+- [Perplexity AI](https://www.perplexity.ai/) — MCP client support
+- [Anthropic](https://www.anthropic.com/) — Claude and MCP development
+
+---
+
+**Version**: 1.0.0 · **Last Updated**: February 2026 · **Status**: Production Ready
 
 ---
 
