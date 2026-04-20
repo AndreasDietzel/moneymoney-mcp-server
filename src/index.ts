@@ -6,12 +6,12 @@ import {
 import * as dotenv from "dotenv";
 import { MoneyMoneyService } from "./moneymoney";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const server = new Server(
   {
     name: "moneymoney-mcp-server",
-    version: "1.0.0",
+    version: "1.2.0",
   },
   {
     capabilities: {
@@ -109,6 +109,140 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      {
+        name: "search_categories",
+        description: "Search the MoneyMoney category catalog by UUID, path, or name. Useful before categorizing transactions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "Optional free-text query, path fragment, or category name",
+            },
+            include_income: {
+              type: "boolean",
+              description: "Include income categories in the results (default: false)",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of categories to return (default: all)",
+            },
+          },
+        },
+      },
+      {
+        name: "categorize_transaction",
+        description: "Assign a MoneyMoney category to a single transaction by transaction ID. Accepts category UUID, full path, or category name. Supports dry-run previews.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            transaction_id: {
+              type: "string",
+              description: "Transaction ID from get_transactions (tx-...) or the raw MoneyMoney transaction ID",
+            },
+            category_uuid: {
+              type: "string",
+              description: "Preferred: target category UUID from search_categories",
+            },
+            category_path: {
+              type: "string",
+              description: "Target category path, e.g. Ausgaben > Konsum > Shopping",
+            },
+            category_name: {
+              type: "string",
+              description: "Fallback category name if UUID/path are not known",
+            },
+            dry_run: {
+              type: "boolean",
+              description: "Preview the category change without writing to MoneyMoney",
+            },
+          },
+          required: ["transaction_id"],
+        },
+      },
+      {
+        name: "batch_categorize_transactions",
+        description: "Assign categories to multiple transactions in one request. Supports dry-run previews and partial success reporting.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            dry_run: {
+              type: "boolean",
+              description: "Preview all requested changes without writing to MoneyMoney",
+            },
+            updates: {
+              type: "array",
+              description: "List of categorization requests",
+              items: {
+                type: "object",
+                properties: {
+                  transaction_id: {
+                    type: "string",
+                    description: "Transaction ID from get_transactions",
+                  },
+                  category_uuid: {
+                    type: "string",
+                    description: "Target category UUID",
+                  },
+                  category_path: {
+                    type: "string",
+                    description: "Target category path",
+                  },
+                  category_name: {
+                    type: "string",
+                    description: "Target category name",
+                  },
+                },
+                required: ["transaction_id"],
+              },
+            },
+          },
+          required: ["updates"],
+        },
+      },
+      {
+        name: "suggest_categories_for_transaction",
+        description: "Suggest likely categories for a transaction based on similar historical transactions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            transaction_id: {
+              type: "string",
+              description: "Transaction ID from get_transactions",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of suggestions to return (default: 5)",
+            },
+          },
+          required: ["transaction_id"],
+        },
+      },
+      {
+        name: "create_rule",
+        description:
+          "Create a persistent categorization rule in MoneyMoney. " +
+          "Transactions whose payee/sender name contains the given pattern will automatically " +
+          "be assigned the specified category — both for past and future transactions. " +
+          "Uses GUI automation (requires Accessibility permission). " +
+          "Prefer this over categorize_transaction when the same payee recurs regularly.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            payee_contains: {
+              type: "string",
+              description:
+                "Text that the payee/sender name must contain for the rule to match (max 200 characters)",
+            },
+            category: {
+              type: "string",
+              description:
+                "Full category path to assign, e.g. \"Ausgaben > Urlaub\" (max 300 characters)",
+            },
+          },
+          required: ["payee_contains", "category"],
+        },
+      },
     ],
   };
 });
@@ -145,6 +279,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   dataAge: status.dataAge,
                   ageMessage,
                   mode: status.isProduction ? "production" : "development",
+                  categoryCount: status.categoryCount,
                 },
                 null,
                 2
@@ -353,6 +488,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         const categoryTree = mapToArray(rootCategories);
+        const flatCategoryCount = new Set(
+          transactions
+            .filter((tx) => tx.categoryPath.length > 0)
+            .map((tx) => tx.categoryPath.join(" > "))
+        ).size;
         
         return {
           content: [
@@ -365,10 +505,167 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   includeIncome,
                   categories: categoryTree,
                   totalCategories: categoryTree.length,
+                  flatCategoryCount,
                 },
                 null,
                 2
               ),
+            },
+          ],
+        };
+      }
+
+      case "search_categories": {
+        const args = toolArgs as {
+          query?: string;
+          include_income?: boolean;
+          limit?: number;
+        } | undefined;
+        const categories = await moneyMoney.getCategoriesCatalog({
+          query: args?.query,
+          includeIncome: args?.include_income ?? false,
+          limit: typeof args?.limit === "number" ? args.limit : undefined,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  status: "success",
+                  query: args?.query || null,
+                  includeIncome: args?.include_income ?? false,
+                  count: categories.length,
+                  data: categories,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
+      case "categorize_transaction": {
+        const args = toolArgs as {
+          transaction_id: string;
+          category_uuid?: string;
+          category_path?: string;
+          category_name?: string;
+          dry_run?: boolean;
+        } | undefined;
+
+        if (!args?.transaction_id) {
+          throw new Error("transaction_id is required");
+        }
+
+        const result = await moneyMoney.categorizeTransaction({
+          transactionId: args.transaction_id,
+          categoryUuid: args.category_uuid,
+          categoryPath: args.category_path,
+          categoryName: args.category_name,
+          dryRun: args.dry_run ?? false,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "batch_categorize_transactions": {
+        const args = toolArgs as {
+          dry_run?: boolean;
+          updates?: Array<{
+            transaction_id: string;
+            category_uuid?: string;
+            category_path?: string;
+            category_name?: string;
+          }>;
+        } | undefined;
+
+        if (!args?.updates || !Array.isArray(args.updates) || args.updates.length === 0) {
+          throw new Error("updates must be a non-empty array");
+        }
+
+        const result = await moneyMoney.categorizeTransactions(
+          args.updates.map((update) => ({
+            transactionId: update.transaction_id,
+            categoryUuid: update.category_uuid,
+            categoryPath: update.category_path,
+            categoryName: update.category_name,
+          })),
+          {
+            dryRun: args.dry_run ?? false,
+          }
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "suggest_categories_for_transaction": {
+        const args = toolArgs as { transaction_id?: string; limit?: number } | undefined;
+
+        if (!args?.transaction_id) {
+          throw new Error("transaction_id is required");
+        }
+
+        const suggestions = await moneyMoney.suggestCategoriesForTransaction(
+          args.transaction_id,
+          typeof args.limit === "number" ? args.limit : 5
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  status: "success",
+                  transactionId: args.transaction_id,
+                  count: suggestions.length,
+                  suggestions,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
+      case "create_rule": {
+        const args = toolArgs as {
+          payee_contains: string;
+          category: string;
+        };
+
+        if (!args?.payee_contains || !args?.category) {
+          throw new Error("payee_contains and category are required");
+        }
+
+        const result = await moneyMoney.createRule(
+          args.payee_contains,
+          args.category
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
@@ -405,7 +702,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   try {
     console.error("Starting MoneyMoney MCP Server");
-    console.error(`Version: 1.0.0`);
+    console.error(`Version: 1.1.0`);
     console.error("Connecting via stdio...");
     
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
