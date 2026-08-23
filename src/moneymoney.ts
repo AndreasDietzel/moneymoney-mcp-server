@@ -10,6 +10,13 @@ import * as path from "path";
 import * as plist from "plist";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import {
+  listStatements as listStatementArchive,
+  getStatement as getStatementFromArchive,
+  ListStatementsOptions,
+  ListStatementsResult,
+  Statement,
+} from "./statements";
 
 const execFileAsync = promisify(execFile);
 
@@ -1485,5 +1492,22 @@ export class MoneyMoneyService {
     }
 
     return yearData;
+  }
+
+  /**
+   * List bank statement PDFs from MoneyMoney's on-disk archive.
+   *
+   * Filesystem-only: needs neither AppleScript nor a running MoneyMoney
+   * instance. See src/statements.ts for the archive layout.
+   */
+  async listStatements(options?: ListStatementsOptions): Promise<ListStatementsResult> {
+    return listStatementArchive(options ?? {});
+  }
+
+  /**
+   * Resolve one statement by its exact file name and return its absolute path.
+   */
+  async getStatement(filename: string): Promise<Statement> {
+    return getStatementFromArchive(filename);
   }
 }
