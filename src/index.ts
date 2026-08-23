@@ -243,6 +243,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["payee_contains", "category"],
         },
       },
+      {
+        name: "create_batch_transfer",
+        description:
+          "Load a SEPA XML batch file (pain.001 credit transfer, or pain.008 direct debit with " +
+          "direct_debit=true) into MoneyMoney. MoneyMoney opens the batch for review and the user " +
+          "must confirm it and enter a TAN — this tool DRAFTS ONLY and can never send a payment by " +
+          "itself. Note that MoneyMoney is sandboxed: if it cannot read the file, move the XML to a " +
+          "location MoneyMoney may access.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            xml_path: {
+              type: "string",
+              description: "Path to the SEPA XML file (max 1024 characters, must end in .xml)",
+            },
+            direct_debit: {
+              type: "boolean",
+              description:
+                "Set to true for a pain.008 direct-debit batch (default: false, pain.001 credit transfer)",
+            },
+          },
+          required: ["xml_path"],
+        },
+      },
     ],
   };
 });
@@ -659,6 +683,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await moneyMoney.createRule(
           args.payee_contains,
           args.category
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "create_batch_transfer": {
+        const args = toolArgs as {
+          xml_path: string;
+          direct_debit?: boolean;
+        };
+
+        if (!args?.xml_path) {
+          throw new Error("xml_path is required");
+        }
+
+        const result = await moneyMoney.createBatchTransfer(
+          args.xml_path,
+          args.direct_debit === true
         );
 
         return {
