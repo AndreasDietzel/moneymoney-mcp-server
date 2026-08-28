@@ -50,6 +50,163 @@ export interface Category {
   kind: CategoryKind;
 }
 
+/** A single security held in a portfolio (Depot) account. */
+export interface PortfolioHolding {
+  id?: number | string;
+  name: string;
+  isin?: string;
+  /** Present in MoneyMoney builds that export a WKN. */
+  wkn?: string;
+  /** Instrument type as reported by MoneyMoney, e.g. "share", "bond", "fund". */
+  type?: string;
+  /** Trading venue, e.g. "Tradegate", "gettex". */
+  market?: string;
+  quantity: number;
+  currencyOfQuantity?: string;
+  price: number;
+  currencyOfPrice?: string;
+  purchasePrice?: number;
+  currencyOfPurchasePrice?: string;
+  /** Current market value of the position. */
+  amount: number;
+  currencyOfAmount?: string;
+  absoluteProfit?: number;
+  relativeProfit?: number;
+  currencyOfProfit?: string;
+  /** Timestamp of the quote, ISO 8601. */
+  tradeTimestamp?: string;
+  assetClassUuid?: string;
+  accountUuid?: string;
+}
+
+/** Aggregated market value and profit, per currency. */
+export interface PortfolioTotal {
+  currency: string;
+  marketValue: number;
+  absoluteProfit: number;
+}
+
+export interface Portfolio {
+  /** The account reference the caller asked for. */
+  account: string;
+  holdingCount: number;
+  /**
+   * Totals grouped by currency. Positions in different currencies are never
+   * summed together, so a mixed-currency Depot reports one entry per currency.
+   */
+  totals: PortfolioTotal[];
+  holdings: PortfolioHolding[];
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) return value;
+  return undefined;
+}
+
+function requiredNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/** Round to two decimals without accumulating float noise. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Parse the property list produced by
+ * `tell application "MoneyMoney" to export portfolio from account "<ref>" as "plist"`.
+ *
+ * Exported separately from the service class so it can be tested without
+ * MoneyMoney running.
+ */
+export function parsePortfolioExport(xmlContent: string, accountRef: string): Portfolio {
+  let parsed: unknown;
+  try {
+    parsed = plist.parse(xmlContent);
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not parse portfolio export from MoneyMoney: ${errMsg}`);
+  }
+
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error("Unexpected portfolio export: not a property list dictionary");
+  }
+
+  const rawHoldings = (parsed as { portfolio?: unknown }).portfolio;
+  if (!Array.isArray(rawHoldings)) {
+    throw new Error("Unexpected portfolio export: no 'portfolio' array found");
+  }
+
+  const holdings: PortfolioHolding[] = [];
+  for (const entry of rawHoldings) {
+    if (entry === null || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+
+    const tradeTimestamp = raw.tradeTimestamp;
+    let timestamp: string | undefined;
+    if (tradeTimestamp instanceof Date) {
+      timestamp = tradeTimestamp.toISOString();
+    } else {
+      timestamp = optionalString(tradeTimestamp);
+    }
+
+    const id = raw.id;
+    holdings.push({
+      id: typeof id === "number" || typeof id === "string" ? id : undefined,
+      name: optionalString(raw.name) ?? "(unnamed)",
+      isin: optionalString(raw.isin),
+      wkn: optionalString(raw.wkn),
+      type: optionalString(raw.type),
+      market: optionalString(raw.market),
+      quantity: requiredNumber(raw.quantity),
+      currencyOfQuantity: optionalString(raw.currencyOfQuantity),
+      price: requiredNumber(raw.price),
+      currencyOfPrice: optionalString(raw.currencyOfPrice),
+      purchasePrice: optionalNumber(raw.purchasePrice),
+      currencyOfPurchasePrice: optionalString(raw.currencyOfPurchasePrice),
+      amount: requiredNumber(raw.amount),
+      currencyOfAmount: optionalString(raw.currencyOfAmount),
+      absoluteProfit: optionalNumber(raw.absoluteProfit),
+      relativeProfit: optionalNumber(raw.relativeProfit),
+      currencyOfProfit: optionalString(raw.currencyOfProfit),
+      tradeTimestamp: timestamp,
+      assetClassUuid: optionalString(raw.assetClassUuid),
+      accountUuid: optionalString(raw.accountUuid),
+    });
+  }
+
+  // Group by the currency the position is valued in — never sum across currencies.
+  const byCurrency = new Map<string, { marketValue: number; absoluteProfit: number }>();
+  for (const holding of holdings) {
+    const currency = holding.currencyOfAmount ?? "";
+    const bucket = byCurrency.get(currency) ?? { marketValue: 0, absoluteProfit: 0 };
+    bucket.marketValue += holding.amount;
+    if (holding.absoluteProfit !== undefined && holding.currencyOfProfit === currency) {
+      bucket.absoluteProfit += holding.absoluteProfit;
+    }
+    byCurrency.set(currency, bucket);
+  }
+
+  const totals: PortfolioTotal[] = Array.from(byCurrency.entries())
+    .map(([currency, bucket]) => ({
+      currency,
+      marketValue: round2(bucket.marketValue),
+      absoluteProfit: round2(bucket.absoluteProfit),
+    }))
+    .sort((a, b) => b.marketValue - a.marketValue);
+
+  return {
+    account: accountRef,
+    holdingCount: holdings.length,
+    totals,
+    holdings,
+  };
+}
+
 interface AccountMapping {
   name: string;
   type: string;
@@ -127,6 +284,14 @@ export class MoneyMoneyService {
   private createRuleScriptPath = path.join(
     process.env.HOME || "",
     "Projects/moneymoney-mcp-server/scripts/create-rule.applescript"
+  );
+  // Resolved relative to this module so it works regardless of where the
+  // repository is checked out (dist/ -> ../scripts, src/ -> ../scripts).
+  private exportPortfolioScriptPath = path.resolve(
+    __dirname,
+    "..",
+    "scripts",
+    "export-portfolio.applescript"
   );
   private realTransactions: Transaction[] = [];
   private realCategories: Category[] = [];
@@ -1485,5 +1650,49 @@ export class MoneyMoneyService {
     }
 
     return yearData;
+  }
+
+  /**
+   * List the securities held in a portfolio (Depot) account.
+   *
+   * @param accountRef UUID, account number or account name — MoneyMoney resolves it
+   */
+  async getPortfolio(accountRef: string): Promise<Portfolio> {
+    // --- Input validation (ISO 25010 Security / Functional Suitability) ---
+    const trimmedRef = accountRef?.trim() ?? "";
+
+    if (trimmedRef.length === 0) {
+      throw new Error("account_id must not be empty");
+    }
+    if (trimmedRef.length > 300) {
+      throw new Error("account_id exceeds maximum length of 300 characters");
+    }
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x08\x0B-\x1F\x7F]/.test(trimmedRef)) {
+      throw new Error("account_id contains invalid control characters");
+    }
+
+    let output: string;
+    try {
+      // execFileAsync forwards args as separate argv entries — no shell interpolation.
+      output = await this.runAppleScript(this.exportPortfolioScriptPath, [trimmedRef]);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+
+      if (errMsg.includes("is not a portfolio")) {
+        throw new Error(
+          `Account "${trimmedRef}" is not a portfolio account. Use get_accounts to find your Depot accounts.`
+        );
+      }
+      if (errMsg.includes("does not exist")) {
+        throw new Error(`Account "${trimmedRef}" does not exist in MoneyMoney.`);
+      }
+      if (errMsg.includes("MoneyMoney") || errMsg.includes("not running")) {
+        throw new Error("MoneyMoney must be running. Please open MoneyMoney and try again.");
+      }
+      throw new Error(errMsg);
+    }
+
+    return parsePortfolioExport(output, trimmedRef);
   }
 }
