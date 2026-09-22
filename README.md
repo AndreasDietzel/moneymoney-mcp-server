@@ -163,7 +163,7 @@ The server uses the standard MCP stdio transport and works with any MCP-compatib
 
 ## Available Tools
 
-The server exposes **12 tools** via the Model Context Protocol:
+The server exposes **13 tools** via the Model Context Protocol:
 
 ### 1. `get_status`
 
@@ -407,6 +407,42 @@ error lists them and you can disambiguate with the `"Bank/Prefix"` form of
 
 ---
 
+### 8. `create_batch_transfer`
+
+Loads a SEPA XML batch file into MoneyMoney.
+
+> **This tool drafts only.** MoneyMoney opens the batch for review and you must
+> confirm it and enter a TAN. Neither the MCP server nor the assistant can send a
+> payment on its own.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `xml_path` | string | **Required.** Path to the SEPA XML file (max 1024 characters, must end in `.xml`) |
+| `direct_debit` | boolean | Optional: `true` for a `pain.008` direct-debit batch (default `false`, `pain.001` credit transfer) |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "requiresConfirmation": true,
+  "message": "MoneyMoney opened the transfer batch from \"/path/to/batch.xml\". Review it in MoneyMoney and confirm with your TAN — nothing has been sent yet."
+}
+```
+
+Before MoneyMoney is involved at all, the file is checked: it must exist, be a
+regular `.xml` file below 512 KB, and carry a `pain.001` or `pain.008` namespace.
+The namespace must match the requested mode, so a direct-debit batch can never be
+submitted as a credit transfer or vice versa.
+
+> **Sandbox note:** MoneyMoney is a sandboxed app. If it cannot read the file, the
+> tool reports this and you should move the XML somewhere MoneyMoney may access,
+> or grant access once through MoneyMoney's own file dialog.
+
+---
+
 ## Account Mappings
 
 By default, accounts are identified by their UUID. To assign friendly names:
@@ -553,6 +589,7 @@ moneymoney-mcp-server/
 ├── scripts/
 │   ├── auto-export.scpt         # AppleScript for automatic data export
 │   ├── get-accounts.scpt        # AppleScript to fetch account list
+│   ├── create-batch-transfer.applescript # Load a SEPA XML batch (drafts only)
 │   ├── diagnose-accounts.scpt   # Account diagnostics
 │   └── diagnose.applescript     # General diagnostics
 ├── data/
@@ -566,7 +603,8 @@ moneymoney-mcp-server/
 ├── com.moneymoney.mcp-server.plist  # macOS LaunchAgent for autostart
 ├── moneymoney-export.lua        # MoneyMoney Lua export extension
 ├── tests/
-│   └── statements.test.js       # Statement archive tests (node --test)
+│   ├── statements.test.js       # Statement archive tests (node --test)
+│   └── batch-transfer.test.js   # SEPA batch validation tests (node --test)
 ├── package.json                 # Project metadata & scripts
 ├── tsconfig.json                # TypeScript configuration
 ├── QUICKSTART.md                # 5-minute quick start guide
@@ -682,7 +720,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 - [MoneyMoney](https://moneymoney-app.com/) — Excellent macOS personal finance app
 - [Perplexity AI](https://www.perplexity.ai/) — MCP client support
 - [Anthropic](https://www.anthropic.com/) — Claude and MCP development
-- [lukasmalkmus/moneymoney](https://github.com/lukasmalkmus/moneymoney) (MIT) — where the idea of exposing MoneyMoney's statement archive over MCP came from
+- [lukasmalkmus/moneymoney](https://github.com/lukasmalkmus/moneymoney) (MIT) — where the idea of exposing MoneyMoney's statement archive and loading SEPA batches over MCP came from
 
 ---
 

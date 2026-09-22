@@ -20,6 +20,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+/** Upper bound for SEPA XML batches — real batches are a few KB. */
+const MAX_SEPA_XML_BYTES = 512 * 1024;
+
 export interface Account {
   id: string;
   name: string;
@@ -134,6 +137,14 @@ export class MoneyMoneyService {
   private createRuleScriptPath = path.join(
     process.env.HOME || "",
     "Projects/moneymoney-mcp-server/scripts/create-rule.applescript"
+  );
+  // Resolved relative to this module so it works regardless of where the
+  // repository is checked out (dist/ -> ../scripts, src/ -> ../scripts).
+  private createBatchTransferScriptPath = path.resolve(
+    __dirname,
+    "..",
+    "scripts",
+    "create-batch-transfer.applescript"
   );
   private realTransactions: Transaction[] = [];
   private realCategories: Category[] = [];
@@ -1509,5 +1520,129 @@ export class MoneyMoneyService {
    */
   async getStatement(filename: string): Promise<Statement> {
     return getStatementFromArchive(filename);
+  }
+
+  /**
+   * Hand a SEPA XML batch file to MoneyMoney for confirmation.
+   *
+   * This drafts only: MoneyMoney opens the batch for review and the user must
+   * confirm it and enter a TAN. Nothing is sent by this method.
+   *
+   * @param xmlPath      Absolute or relative path to a SEPA XML file
+   * @param directDebit  true for a pain.008 direct-debit batch, false (default)
+   *                     for a pain.001 credit-transfer batch
+   */
+  async createBatchTransfer(
+    xmlPath: string,
+    directDebit: boolean = false
+  ): Promise<{
+    success: boolean;
+    requiresConfirmation?: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    // --- Input validation (ISO 25010 Security / Functional Suitability) ---
+    const trimmedPath = xmlPath?.trim() ?? "";
+
+    if (trimmedPath.length === 0) {
+      return { success: false, error: "xml_path must not be empty" };
+    }
+    if (trimmedPath.length > 1024) {
+      return { success: false, error: "xml_path exceeds maximum length of 1024 characters" };
+    }
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x08\x0B-\x1F\x7F]/.test(trimmedPath)) {
+      return { success: false, error: "xml_path contains invalid control characters" };
+    }
+
+    const absolutePath = path.resolve(trimmedPath);
+
+    if (!fs.existsSync(absolutePath)) {
+      return { success: false, error: `SEPA XML file not found: ${absolutePath}` };
+    }
+
+    let stats: fs.Stats;
+    try {
+      stats = fs.statSync(absolutePath);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      return { success: false, error: `Cannot read SEPA XML file: ${errMsg}` };
+    }
+
+    if (!stats.isFile()) {
+      return { success: false, error: `xml_path is not a file: ${absolutePath}` };
+    }
+    if (!absolutePath.toLowerCase().endsWith(".xml")) {
+      return { success: false, error: "xml_path must point to an .xml file" };
+    }
+    if (stats.size > MAX_SEPA_XML_BYTES) {
+      return {
+        success: false,
+        error: `SEPA XML file is larger than ${Math.round(MAX_SEPA_XML_BYTES / 1024)} KB — refusing to load it`,
+      };
+    }
+
+    // Verify the document really is the SEPA scheme the caller asked for, so a
+    // direct-debit batch can never be submitted as a credit transfer (or vice versa).
+    let head: string;
+    try {
+      head = fs.readFileSync(absolutePath, "utf-8").slice(0, 4096);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      return { success: false, error: `Cannot read SEPA XML file: ${errMsg}` };
+    }
+
+    const isCreditTransfer = head.includes("pain.001");
+    const isDirectDebit = head.includes("pain.008");
+
+    if (!isCreditTransfer && !isDirectDebit) {
+      return {
+        success: false,
+        error:
+          "File does not look like a SEPA payment instruction (no pain.001 or pain.008 namespace found)",
+      };
+    }
+    if (directDebit && !isDirectDebit) {
+      return {
+        success: false,
+        error: "direct_debit was requested but the file is a pain.001 credit transfer",
+      };
+    }
+    if (!directDebit && !isCreditTransfer) {
+      return {
+        success: false,
+        error: "File is a pain.008 direct debit — set direct_debit to true to load it",
+      };
+    }
+
+    try {
+      // execFileAsync forwards args as separate argv entries — no shell interpolation.
+      const output = await this.runAppleScript(this.createBatchTransferScriptPath, [
+        absolutePath,
+        directDebit ? "direct-debit" : "transfer",
+      ]);
+
+      try {
+        return JSON.parse(output) as {
+          success: boolean;
+          requiresConfirmation?: boolean;
+          message?: string;
+          error?: string;
+        };
+      } catch {
+        return { success: false, error: `Unexpected AppleScript output: ${output}` };
+      }
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+
+      if (errMsg.includes("MoneyMoney") || errMsg.includes("not running")) {
+        return {
+          success: false,
+          error: "MoneyMoney must be running. Please open MoneyMoney and try again.",
+        };
+      }
+
+      return { success: false, error: errMsg };
+    }
   }
 }
