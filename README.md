@@ -163,7 +163,7 @@ The server uses the standard MCP stdio transport and works with any MCP-compatib
 
 ## Available Tools
 
-The server exposes **13 tools** via the Model Context Protocol:
+The server exposes **14 tools** via the Model Context Protocol:
 
 ### 1. `get_status`
 
@@ -443,6 +443,56 @@ submitted as a credit transfer or vice versa.
 
 ---
 
+### 9. `get_portfolio`
+
+Lists the securities held in a portfolio (Depot) account. Read-only.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `account_id` | string | **Required.** UUID, account number or account name of a portfolio account |
+
+**Response:**
+
+```json
+{
+  "account": "Example Depot",
+  "holdingCount": 2,
+  "totals": [
+    { "currency": "EUR", "marketValue": 1005.00, "absoluteProfit": 205.00 },
+    { "currency": "USD", "marketValue": 1000.00, "absoluteProfit": 50.00 }
+  ],
+  "holdings": [
+    {
+      "id": 1,
+      "name": "Example World ETF",
+      "isin": "DE0001234567",
+      "type": "share",
+      "market": "Tradegate",
+      "quantity": 10,
+      "price": 100.50,
+      "currencyOfPrice": "EUR",
+      "purchasePrice": 80.00,
+      "amount": 1005.00,
+      "currencyOfAmount": "EUR",
+      "absoluteProfit": 205.00,
+      "relativeProfit": 0.2562,
+      "tradeTimestamp": "2026-08-27T16:30:00.000Z"
+    }
+  ]
+}
+```
+
+Totals are grouped by the currency a position is valued in — values in different
+currencies are never summed together, and a profit reported in a different
+currency than the position is left out of that currency's total. Optional fields
+vary between MoneyMoney versions and are simply omitted when absent.
+
+Passing a non-portfolio account returns a clear error pointing at `get_accounts`.
+
+---
+
 ## Account Mappings
 
 By default, accounts are identified by their UUID. To assign friendly names:
@@ -590,6 +640,7 @@ moneymoney-mcp-server/
 │   ├── auto-export.scpt         # AppleScript for automatic data export
 │   ├── get-accounts.scpt        # AppleScript to fetch account list
 │   ├── create-batch-transfer.applescript # Load a SEPA XML batch (drafts only)
+│   ├── export-portfolio.applescript # Export Depot holdings as plist
 │   ├── diagnose-accounts.scpt   # Account diagnostics
 │   └── diagnose.applescript     # General diagnostics
 ├── data/
@@ -604,7 +655,8 @@ moneymoney-mcp-server/
 ├── moneymoney-export.lua        # MoneyMoney Lua export extension
 ├── tests/
 │   ├── statements.test.js       # Statement archive tests (node --test)
-│   └── batch-transfer.test.js   # SEPA batch validation tests (node --test)
+│   ├── batch-transfer.test.js   # SEPA batch validation tests (node --test)
+│   └── portfolio.test.js        # Portfolio parsing tests (node --test)
 ├── package.json                 # Project metadata & scripts
 ├── tsconfig.json                # TypeScript configuration
 ├── QUICKSTART.md                # 5-minute quick start guide
@@ -720,7 +772,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 - [MoneyMoney](https://moneymoney-app.com/) — Excellent macOS personal finance app
 - [Perplexity AI](https://www.perplexity.ai/) — MCP client support
 - [Anthropic](https://www.anthropic.com/) — Claude and MCP development
-- [lukasmalkmus/moneymoney](https://github.com/lukasmalkmus/moneymoney) (MIT) — where the idea of exposing MoneyMoney's statement archive and loading SEPA batches over MCP came from
+- [lukasmalkmus/moneymoney](https://github.com/lukasmalkmus/moneymoney) (MIT) — where the idea of exposing MoneyMoney's statement archive, loading SEPA batches, and exposing Depot holdings over MCP came from
 
 ---
 

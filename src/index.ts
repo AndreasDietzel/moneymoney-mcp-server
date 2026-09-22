@@ -319,6 +319,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["xml_path"],
         },
       },
+      {
+        name: "get_portfolio",
+        description:
+          "List the securities held in a portfolio (Depot) account. Returns each holding with " +
+          "name, ISIN, instrument type, trading venue, quantity, current price, purchase price, " +
+          "market value and profit, plus totals grouped by currency. Read-only.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            account_id: {
+              type: "string",
+              description:
+                "Portfolio account to read: UUID, account number or account name (from get_accounts)",
+            },
+          },
+          required: ["account_id"],
+        },
+      },
     ],
   };
 });
@@ -813,6 +831,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "get_portfolio": {
+        const args = toolArgs as { account_id: string };
+
+        if (!args?.account_id) {
+          throw new Error("account_id is required");
+        }
+
+        const portfolio = await moneyMoney.getPortfolio(args.account_id);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(portfolio, null, 2),
             },
           ],
         };
