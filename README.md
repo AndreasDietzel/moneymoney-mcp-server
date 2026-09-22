@@ -163,7 +163,7 @@ The server uses the standard MCP stdio transport and works with any MCP-compatib
 
 ## Available Tools
 
-The server exposes **5 tools** via the Model Context Protocol:
+The server exposes **12 tools** via the Model Context Protocol:
 
 ### 1. `get_status`
 
@@ -339,6 +339,74 @@ Returns the hierarchical category tree with spending totals.
 
 ---
 
+### 6. `list_statements`
+
+Lists bank statement PDFs from MoneyMoney's on-disk statement archive
+(`~/Library/Containers/com.moneymoney-app.retail/.../MoneyMoney/Statements/`).
+
+Read-only and filesystem-only — this tool needs neither AppleScript nor a running
+MoneyMoney instance.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `bank` | string | Optional: case-insensitive substring of the bank name, e.g. `"ING"` |
+| `account` | string | Optional: IBAN, account number, digit fragment, or `"Bank/Prefix"` |
+| `since` | string | Optional: only statements dated on/after this ISO date (`YYYY-MM-DD`) |
+| `until` | string | Optional: only statements dated on/before this ISO date (`YYYY-MM-DD`) |
+| `limit` | number | Optional: maximum number of statements to return |
+
+**Response:**
+
+```json
+{
+  "root": "/Users/you/Library/Containers/com.moneymoney-app.retail/.../Statements",
+  "total": 1950,
+  "returned": 2,
+  "undatedExcluded": 0,
+  "statements": [
+    {
+      "bank": "DKB",
+      "filename": "Kontoauszug_7_2026_vom_05.08.2026_zu_Konto_9876543210.pdf",
+      "path": "/Users/you/Library/Containers/.../Statements/DKB/Kontoauszug_7_2026_vom_05.08.2026_zu_Konto_9876543210.pdf",
+      "date": "2026-08-05",
+      "accountHint": "9876543210",
+      "size": 48213
+    }
+  ]
+}
+```
+
+Statement dates are derived from the file name in the four formats German banks
+use: `YYYY-MM-DD`, `YYYY_MM_DD`, `DD.MM.YYYY` and `YYYYMMDD`. Account and
+reference numbers are never mistaken for dates. When a date filter is active,
+`undatedExcluded` reports how many statements were skipped because no date could
+be derived, so a filtered result is never silently incomplete.
+
+> **Note:** file names rarely answer the user's question on their own. Pass the
+> returned `path` to a PDF reader to see balances, bookings and fees.
+
+---
+
+### 7. `get_statement`
+
+Resolves a single statement by its exact file name (as returned by
+`list_statements`) and returns its absolute path.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `filename` | string | **Required.** Exact file name, e.g. `"Kontoauszug_1234567890_2020-05-30_0916.pdf"` |
+
+Path separators and `..` segments are rejected, so the tool can only ever resolve
+files inside the archive. If the same file name exists for several banks, the
+error lists them and you can disambiguate with the `"Bank/Prefix"` form of
+`list_statements`.
+
+---
+
 ## Account Mappings
 
 By default, accounts are identified by their UUID. To assign friendly names:
@@ -479,6 +547,7 @@ moneymoney-mcp-server/
 ├── src/
 │   ├── index.ts                 # MCP server entry point & tool definitions
 │   ├── moneymoney.ts            # MoneyMoney service (API, parsing, analysis)
+│   ├── statements.ts            # Bank statement archive index (filesystem-only)
 │   └── moneymoney-old.ts        # Legacy implementation (reference only)
 ├── dist/                        # Compiled JavaScript (used by MCP clients)
 ├── scripts/
@@ -496,6 +565,8 @@ moneymoney-mcp-server/
 ├── account-mappings.example.json# Template for account mappings
 ├── com.moneymoney.mcp-server.plist  # macOS LaunchAgent for autostart
 ├── moneymoney-export.lua        # MoneyMoney Lua export extension
+├── tests/
+│   └── statements.test.js       # Statement archive tests (node --test)
 ├── package.json                 # Project metadata & scripts
 ├── tsconfig.json                # TypeScript configuration
 ├── QUICKSTART.md                # 5-minute quick start guide
@@ -563,6 +634,7 @@ See [SECURITY.md](SECURITY.md) for the full security policy.
 | `npm run dev` | Start server in development mode (ts-node) |
 | `npm run build` | Compile TypeScript to JavaScript |
 | `npm run start` | Start compiled production server |
+| `npm test` | Build, then run the test suite |
 
 ### Contributing
 
@@ -610,6 +682,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 - [MoneyMoney](https://moneymoney-app.com/) — Excellent macOS personal finance app
 - [Perplexity AI](https://www.perplexity.ai/) — MCP client support
 - [Anthropic](https://www.anthropic.com/) — Claude and MCP development
+- [lukasmalkmus/moneymoney](https://github.com/lukasmalkmus/moneymoney) (MIT) — where the idea of exposing MoneyMoney's statement archive over MCP came from
 
 ---
 

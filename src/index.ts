@@ -243,6 +243,58 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["payee_contains", "category"],
         },
       },
+      {
+        name: "list_statements",
+        description:
+          "List bank statement PDFs from MoneyMoney's on-disk statement archive. " +
+          "Filter by bank, account (IBAN / account number / 'Bank/Prefix'), and date range. " +
+          "Returns {bank, filename, path, date, accountHint, size}, newest first. " +
+          "Note: the file name alone rarely answers a question — pass the returned path to a PDF reader " +
+          "to see balances, bookings, and fees.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            bank: {
+              type: "string",
+              description: "Optional: case-insensitive substring of the bank name, e.g. \"ING\"",
+            },
+            account: {
+              type: "string",
+              description:
+                "Optional: account reference — IBAN, account number, digit fragment, or \"Bank/Prefix\"",
+            },
+            since: {
+              type: "string",
+              description: "Optional: only statements dated on/after this ISO date (YYYY-MM-DD)",
+            },
+            until: {
+              type: "string",
+              description: "Optional: only statements dated on/before this ISO date (YYYY-MM-DD)",
+            },
+            limit: {
+              type: "number",
+              description: "Optional: maximum number of statements to return",
+            },
+          },
+        },
+      },
+      {
+        name: "get_statement",
+        description:
+          "Resolve a single bank statement by its exact file name (as returned by list_statements) " +
+          "and return its absolute path on disk. Read that path to answer questions about the " +
+          "statement's contents — do not stop at the file name.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            filename: {
+              type: "string",
+              description: "Exact file name from list_statements, e.g. \"Kontoauszug_1234567890_2020-05-30_0916.pdf\"",
+            },
+          },
+          required: ["filename"],
+        },
+      },
     ],
   };
 });
@@ -666,6 +718,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_statements": {
+        const args = (toolArgs ?? {}) as {
+          bank?: string;
+          account?: string;
+          since?: string;
+          until?: string;
+          limit?: number;
+        };
+
+        const result = await moneyMoney.listStatements({
+          bank: args.bank,
+          account: args.account,
+          since: args.since,
+          until: args.until,
+          limit: args.limit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "get_statement": {
+        const args = toolArgs as { filename: string };
+
+        if (!args?.filename) {
+          throw new Error("filename is required");
+        }
+
+        const statement = await moneyMoney.getStatement(args.filename);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(statement, null, 2),
             },
           ],
         };
